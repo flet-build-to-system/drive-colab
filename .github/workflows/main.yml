@@ -1,108 +1,35 @@
-name: Build Flet APK and Web
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    env:
-      JAVA_HOME: /opt/hostedtoolcache/jdk/18/x64
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install system deps (GTK, build tools, zip)
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y wget unzip zip libgtk-3-dev python3-dev build-essential
-
-      - name: Setup Java 18
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '18'
-
-      - name: Setup Flutter (fixed version)
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.29.2'
-
       - name: Install Android SDK commandlinetools
         run: |
+          set -e
           export ANDROID_SDK_ROOT=$HOME/android-sdk
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O /tmp/cmdline.zip
           unzip -q /tmp/cmdline.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
-          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/ || true
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
-          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
+
+          # Handle different zip layouts: sometimes it extracts to cmdline-tools/cmdline-tools/...
+          if [ -d "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" ]; then
+            rm -rf $ANDROID_SDK_ROOT/cmdline-tools/latest || true
+            mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          else
+            mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
+            mv $ANDROID_SDK_ROOT/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/ || true
+          fi
+
+          # Ensure platform-tools dir exists (will be populated by sdkmanager)
+          mkdir -p $ANDROID_SDK_ROOT/platform-tools
+
+          # Export PATH for the current shell so sdkmanager is available immediately
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+
+          # Quick check
+          which sdkmanager || echo "sdkmanager not found in PATH yet"
+          sdkmanager --version
+
+          # Accept licenses and install required components
           yes | sdkmanager --sdk_root=${ANDROID_SDK_ROOT} --licenses
           sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
-      - name: Upgrade pip & tooling (fix pip/packaging errors)
-        run: |
-          python -m pip install --upgrade pip setuptools wheel packaging
-
-      - name: Install Python deps (flet)
-        run: |
-          pip install "flet[all]"
-
-      - name: Ensure project exists and inspect structure
-        run: |
-          if [ ! -d "ReorderableListView" ]; then
-            flet create ReorderableListView
-          fi
-          echo "Listing project tree:"
-          ls -la ReorderableListView
-          find ReorderableListView -maxdepth 2 -type f -print || true
-
-      - name: Build Web (run inside project; use '.' to avoid nested-name issues)
-        working-directory: ReorderableListView
-        run: |
-          set -e
-          flutter --version
-          flet build web . --no-android-splash
-          echo "Web build files:"
-          ls -la build/web || true
-
-      - name: Archive Web build
-        working-directory: ReorderableListView
-        run: |
-          if [ -d "build/web" ]; then
-            zip -r "../flet-web-${{ github.run_id }}.zip" build/web
-          else
-            echo "No web build found"
-          fi
-
-      - name: Build APK (run inside project)
-        working-directory: ReorderableListView
-        run: |
-          set -e
-          flutter doctor --android-licenses || true
-          flutter --version
-          # Use '.' so flet builds the app in current folder (avoids duplicated path)
-          flet build apk . --no-android-splash || true
-          echo "APK candidates:"
-          find . -type f -name "*.apk" -print || true
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: flet-apk
-          path: |
-            ReorderableListView/**/build/**/*.apk
-            ReorderableListView/**/*.apk
-            **/build/**/*.apk
-
-      - name: Upload Web artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: flet-web
-          path: |
-            ReorderableListView/flet-web-*.zip
-            ReorderableListView/build/web/**
+          # Make paths available to following steps
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
