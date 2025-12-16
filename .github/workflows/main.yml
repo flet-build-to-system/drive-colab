@@ -1,0 +1,66 @@
+# URL: ضع هذا الملف في .github/workflows/build-apk.yml داخل المستودع
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    env:
+      JAVA_HOME: /opt/hostedtoolcache/jdk/18/x64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 18
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '18'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Install Android SDK commandlinetools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget unzip
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O /tmp/cmdline.zip
+          unzip -q /tmp/cmdline.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/ || true
+          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+          yes | sdkmanager --sdk_root=${ANDROID_SDK_ROOT} --licenses
+          sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+          echo "PATH=${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools:${PATH}" >> $GITHUB_PATH
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install "flet[all]"
+
+      - name: Create / build flet app (if project not present, adjust)
+        run: |
+          # إذا كان المشروع جزءاً من المستودع استخدم مساره، وإلا أنشئه
+          if [ ! -d "ReorderableListView" ]; then
+            flet create ReorderableListView
+          fi
+          cd ReorderableListView
+          flet build apk . --no-android-splash || flet build apk ReorderableListView --no-android-splash || true
+          find . -type f -name "*.apk" -print
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flet-apk
+          path: |
+            ReorderableListView/**/build/**/*.apk
+            ReorderableListView/**/*.apk
+            **/build/**/*.apk
