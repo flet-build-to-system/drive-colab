@@ -41,9 +41,9 @@ jobs:
       run: |
         mkdir -p build_output
         cp -r build/apk build/web build_output/
-      # Use the artifact to save APK and Web results
+
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build-artifacts
         path: build_output
