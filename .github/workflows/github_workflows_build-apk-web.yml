@@ -33,10 +33,11 @@ jobs:
         flet create ReorderableListView
         flet build apk ReorderableListView --no-android-splash
 
-    - name: Save APK and Web
+    - name: Save APK 
       run: |
         mkdir -p build_output
         cp -r ReorderableListView/build/apk
+
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
