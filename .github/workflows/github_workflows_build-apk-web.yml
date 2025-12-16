@@ -3,7 +3,7 @@ name: Build APK and Web
 on:
   push:
     branches:
-      - main # تشغيل الإجراء عند الدفع إلى الفرع الرئيسي
+      - main # تشغيل هذا الإجراء عند الدفع إلى الفرع الرئيسي
 
 jobs:
   build:
@@ -13,11 +13,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up Flutter
-      run: |
-        git clone -b stable https://github.com/flutter/flutter.git
-        export PATH="$PATH:`pwd`/flutter/bin"
-        flutter doctor
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
 
     - name: Install system dependencies
       run: |
@@ -34,15 +33,10 @@ jobs:
         flet create ReorderableListView
         flet build apk ReorderableListView --no-android-splash
 
-    #- name: Build Web
-     # run: |
-      #  flet build web ReorderableListView --no-android-splash
-
     - name: Save APK and Web
       run: |
         mkdir -p build_output
-        cp -r ReorderableListView/build/app/outputs/apk build_output/apk
-#cp -r ReorderableListView/build/web build_output/web
+        cp -r ReorderableListView/build/apk
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
