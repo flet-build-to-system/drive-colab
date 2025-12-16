@@ -1,0 +1,49 @@
+name: Build APK and Web
+
+on:
+  push:
+    branches:
+      - main # تشغيل هذا الإجراء عند الدفع إلى الفرع الرئيسي
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build google-chrome-stable libgtk-3-dev openjdk-18-jdk build-essential python3-dev
+
+    - name: Install Python dependencies
+      run: |
+        pip install --upgrade pip
+        pip install flet[all] flashlight==0.1.1 httptools
+
+    - name: Build APK
+      run: |
+        flet create ReorderableListView
+        flet build apk ReorderableListView --no-android-splash
+
+    - name: Build Web
+      run: |
+        flet build web ReorderableListView --no-android-splash
+
+    - name: Save APK and Web
+      run: |
+        mkdir -p build_output
+        cp -r build/apk build/web build_output/
+      # Use the artifact to save APK and Web results
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-artifacts
+        path: build_output
